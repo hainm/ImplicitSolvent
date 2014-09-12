@@ -10,9 +10,9 @@ It would be great if you can give me credit for my work.
 
 import sys
 import argparse
-from GBClass import Molecule
-from CheckInput import *
-from paperInfo import *
+from GB.GBClass import Molecule
+from GB.CheckInput import *
+from GB.paperInfo import *
 
 pinfo = PaperInfo()
 DESCRITION_IGB = pinfo.DESCRITION_IGB
