@@ -1,3 +1,13 @@
+'''©Hai Nguyen
+I made this work for my GB project. You're free to use for whatever purpose.
+It would be great if you can give me credit for my work.
+    1. Protein
+    Nguyen, H.; Roe, D. R.; Simmerling, C., Improved Generalized Born Solvent Model Parameters for Protein Simulations. J. Chem. Theory Comput. 2013, 9 (4), 2020-2034.
+
+    2. Nucleic acid
+    Nguyen, H.; Perez, A.; Simmerling, C., Refinement of Generalized-Born Neck Parameters for Nucleic Acid and Their Complex with Protein. (in preperation).
+'''
+
 class PaperInfo():
     HELPIGB = '''igb = 1, 2, 5, 7, or 8'''
 
