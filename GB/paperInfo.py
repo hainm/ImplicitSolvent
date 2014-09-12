@@ -33,7 +33,7 @@ class PaperInfo():
         if self.igb:
             self.printInfo(self.igb)
     def printInfo(self,igb):
-        IGBDICT = {'1':self.__class__.GBHCT,
+        IGBDICT = {'1':self.GBHCT,
                    '2':self.GBOBC,
                    '5':self.GBOBC,
                    '7':self.GBNeck,
