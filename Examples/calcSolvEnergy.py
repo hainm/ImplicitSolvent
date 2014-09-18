@@ -40,6 +40,6 @@ check.check_top_crd(top,crd)
 mol = Molecule(top=top,crd=crd,pbd=pdb)
 print mol.get_solv(igb=igb)
  #print paper's information for different GB model.
- pinfo.printInfo(args.igb)
+pinfo.printInfo(args.igb)
 
 

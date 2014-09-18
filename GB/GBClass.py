@@ -10,9 +10,9 @@ class Atom:
 
     def __init__(self,x=0,y=0,z=0,r=0,R=0,q=0, atype='',offset=0.09,ro=0,rs=0,sf=0):
         """ x,y,z: atom coordinates
-        r, R: bondi and effective radius
+        r, R: VDW and effective radius
         q: partial charge
-        offset: offset
+        offset: offset for GB (igb = 1,2,5,7,8)
         ro: ro = r - offest
         rs = r * sf
         sf: Scaling Factor (Sh, Sc, Sn, Ss, So)
@@ -29,12 +29,12 @@ class Atom:
         self.offset = offset
         self.atype = atype
 
-    def setCoord(self,x,y,z):
+    def set_coord(self,x,y,z):
         self.x = x
         self.y = y
         self.z = z
 
-    def setEffRad(self,R):
+    def set_eff_rad(self,R):
         self.R = R
 
     def setTypeChargeRadiusFs(self,atype,charge,radius,sf):
@@ -43,10 +43,12 @@ class Atom:
         self.r = radius
         self.sf = sf
 
-    def setRoRs(self):
+    def set_Ro_Rs(self):
         self.ro = self.r - self.offset
         self.rs = self.ro * self.sf #change self.r to self.ro
 
+    def unpack_coord(self):
+        return [self.x, self.y, self.z]
     def showCoord(self):
         print self.x, self.y, self.z
 
@@ -57,20 +59,19 @@ class Atom:
 class Molecule:
 
     def __init__(self,ein=1.0,eout=78.5,offset=0.09,crd='',top='',pdb='',molType=''):
-        '''GBNeck: scalingDict = {'H':1.091, 'C':0.484, 'N':0.700, 'O':1.066}
-         GBOBC: scalingDict = {}
+        '''
          self.fss: array of atom.rs
          self.rborn: array of atom.r
          self.Rbonrs contain is array of self.rborn
          self.effRad_PB: array of "perfect radii" from PB caclulation
          sefl.selfPB: PB array of self term
-         self.atypes: array of atom types
-            type: string, len = 2
+         self.atypes: array of atom types (len = 2)
          self.mod_atypes = array(self.atypes,'c')
          molType: molecule type, if mol get from top, molType = top
          self.typekeys: array of atom type key
          self.AMBCONST: constant to convert amber charge to normal charge
        '''
+
         #initialize data
         self.atoms = []
         self.xx = []
@@ -86,22 +87,45 @@ class Molecule:
         self.ein = ein
         self.eout = eout
         self.effRad_PB = []
-        self.selfEnPB = []
+        self.selfEPB = []
         self.offset = offset
-        self.typekeys = []
+        self.typekeys = [] #all unique atom types
         self.AMBCONST = 18.222
         self.reslb = []
-        self.reslblen4 = []
         self.respt = []
+        self.topologylines = []
+        self.radii_line_format = 0
+        self.ATOM_TYPE_INDEX = []
+        self.NUMBER_EXCLUDED_ATOMS = []
+        self.NONBONDED_PARM_INDEX = []
+        self.BOND_EQUIL_VALUE = []
+        self.BOND_FORCE_CONSTANT = []
+        self.ANGLE_FORCE_CONSTANT = []
+        self.DIHEDRAL_FORCE_CONSTANT = []
+        self.DIHEDRAL_PERIODICITY = []
+        self.DIHEDRAL_PHASE = []
+        self.LENNARD_JONES_ACOEF = []
+        self.LENNARD_JONES_BCOEF = []
+        self.BONDS_INC_HYDROGEN = []
+        self.BONDS_WITHOUT_HYDROGEN = []
+        self.ANGLES_INC_HYDROGEN = []
+        self.ANGLES_WITHOUT_HYDROGEN = []
+        self.DIHEDRALS_INC_HYDROGEN = []
+        self.DIHEDRALS_WITHOUT_HYDROGEN = []
+        self.EXCLUDED_ATOMS_LIST = []
+        self.HBOND_ACOEF = []
+        self.HBOND_BCOEF = []
+        self.TREE_CHAIN_CLASSIFICATION = []
+
         if top and crd and not pdb:
-            self.getAtoms(top,crd)
+            self.get_atoms(top,crd)
         elif top and not crd:
-            self.getAtomsFromTop(top)
+            self.get_atoms_from_top(top)
             if pdb:
-                self.getCoordFromPDB(pdb)
+                self.get_coord_from_PDB(pdb)
 
 
-    def getAtomsFromTop(self,top):
+    def get_atoms_from_top(self,top):
         ''' get atoms from top only (without coordinate file)'''
         fh = open(top)
         lines = fh.readlines() # put all lines of topology file in lines array
@@ -113,6 +137,7 @@ class Molecule:
         fss = []
         respt = []
         reslb = []
+        self.topologylines = lines
 
         # get atom.q, atom.r, atom.atype, screening parameters
         for line in lines:
@@ -128,12 +153,19 @@ class Molecule:
                 numline = linenum(natoms,5)
                 for i in range(index+2,index+numline+2):
                     for charge in lines[i].split():
-                        charges.append(float(charge)) # You could use 18.2222 to convert charge in AMBER format to normal charge
+                        charges.append(float(charge))
+                        # You could use 18.2222 to convert
+                        # charge in AMBER format to normal charge
 
-            # get atom radii
+            # get atom VDW radii
             if line.startswith('%FLAG RADII'):
                 index = lines.index(line)
-                numline = linenum(natoms,5)
+                nextline = lines[index+1]
+                if not nextline.startswith('%FORMAT(5E16.8)'):
+                    print "Use topology file generated by tleap and sleap"
+                    sys.exit()
+                else: self.radii_line_format = 5
+                numline = linenum(natoms,self.radii_line_format)
                 for i in range(index+2,index+numline+2):
                     for radius in lines[i].split():
                         radii.append(float(radius))
@@ -144,10 +176,7 @@ class Molecule:
                 numline = linenum(natoms,20)
                 for i in range(index+2,index+numline+2):
                     for atype in lines[i].split():
-                        if len(atype) == 1:
-                            #add space to atype so len(atype) = 2
-                            # for example: 'H' should be 'H '
-                            atype = atype + ' '
+                        atype = atype.ljust(2)
                         atypes.append(atype)
 
             # get screening parameter to sf
@@ -185,26 +214,22 @@ class Molecule:
                         else:
                             atname_pdb.append(st)
                     i = i+1
-                for i,st in enumerate(atname_pdb):
-                    if len(st) == 1:
-                        atname_pdb[i] +=  '   '
-                    elif len(st) == 2:
-                        atname_pdb[i] += '  '
-                    elif len(st) == 3:
-                        atname_pdb[i] += ' '
+                for i,atn in enumerate(atname_pdb):
+                    #make sure atname_pdb has length of 4
+                    atname_pdb[i] = atn.ljust(4)
 
             #get FLAG RESIDUE_POINTER
             if line.startswith('%FLAG RESIDUE_POINTER'):
                 i = lines.index(line) + 2
                 while not lines[i].startswith('%FLAG'):
                     respt = respt + [int(st) for st in lines[i].split()]
-                    i = i +1
+                    i = i + 1
 
         # set atom types, charges, radii for atoms of molecule and add atoms to array stored in molecule.atoms
         for i in range(len(charges)):
             atom = Atom()
             atom.setTypeChargeRadiusFs(atypes[i],charges[i],radii[i],fss[i])
-            atom.setRoRs()
+            atom.set_Ro_Rs()
             fss[i] = atom.rs
             self.atoms.append(atom)
         fh.close()
@@ -214,14 +239,18 @@ class Molecule:
         self.rborn = radii
         self.atypes = atypes #work with numpy array when using f2py
         self.atname_pdb = atname_pdb
-        #self.mod_atypes = array(atypes,'c')
         self.natoms = natoms
         self.charges = charges
-        self.typekeys = self.getinfo().keys()
+        self.typekeys = self.show_info().keys()
         self.reslb = reslb
         self.respt = respt
 
-    def getAtoms(self,top,crd):
+    def check_word_in_file(self,word,filename):
+        """check if a word exists in txt file"""
+        #not validated yet
+        return (word in open(filename).read())
+
+    def get_atoms(self,top,crd):
         ''' Set: atom.x, atom.y, atom.z, atom.q, atom.r, atom.atype,
         atom.offset, atom.ro, atom.rs for molecule.
         This is an example of crd file:
@@ -231,7 +260,7 @@ class Molecule:
               -1.0704247   4.9698918  -1.6515413  -2.2444098   4.6086778  -1.7336542
                 ...(skip)
       '''
-        self.getAtomsFromTop(top)
+        self.get_atoms_from_top(top)
         xx = []
         # get atom coordinate from restart or crd file
         fh = open(crd)
@@ -249,12 +278,12 @@ class Molecule:
         index = 0
         for i in range(1,numline+1):
             line = lines[i].split()
-            self.atoms[index].setCoord(float(line[0]),float(line[1]),float(line[2]))
+            self.atoms[index].set_coord(float(line[0]),float(line[1]),float(line[2]))
             xx.append(float(line[0]))
             xx.append(float(line[1]))
             xx.append(float(line[2]))
             try:
-                self.atoms[index+1].setCoord(float(line[3]),float(line[4]),float(line[5]))
+                self.atoms[index+1].set_coord(float(line[3]),float(line[4]),float(line[5]))
                 xx.append(float(line[3]))
                 xx.append(float(line[4]))
                 xx.append(float(line[5]))
@@ -265,16 +294,28 @@ class Molecule:
         # while using module from FORTRAN, I could not use numpy to pass these array to function? why?
         self.xx = xx # coordinate file: the same with the amber file. Should I use numpy.array or just use normal array?
 
-    def getBlock(self,index,crd):
+    def get_distance(self,atom1,atom2):
+        """get distance from atom 1 and atom 2
+        atoms are instance of Atom class
+        """
+        return dist(atom1,atom2)
+
+    def get_block(self,index,crd):
         '''get block array from crd file
         '''
         pass
 
-    def printInfo(self):
+    def print_fnfo(self):
         '''
         '''
 
-    def getCoordFromTraj(self,top,crd):
+    def get_coord_from_traj_frame(self,top,trj,k):
+        '''get specific data from k-th frame
+        where can I store this data? replace old one?
+        '''
+        pass
+
+    def get_coord_from_traj(self,top,crd):
         """get coordinate from top and long trajectories file
         Return array contain coordinate for each snapshot.
         NOT DONE YET
@@ -286,13 +327,9 @@ class Molecule:
             self.Rborns.append(block)
         pass
 
-    def getCoordFromPDB(self,pdb):
-        '''get coordinate from pdb file generated by ptraj
-        For the safety, these pdb files must be genereated by ptraj with "nowrap"
-        "REMARK 1 PDB file generated by ptraj (set  1296)"
-        Look at this folder for reference:
-        PDB generated by ptraj: /mnt/raidc/haichit/GB/PB/ala10/clusterAnalysis/pdbFromCluster
-        PDB generated by vmd (from top and crd files): /mnt/raidc/haichit/GB/PB/trp_nmr/trp_nmr_vmd.pdb
+    def get_coord_from_PDB(self,pdb):
+        '''get coordinate from pdb file generated by ptraj or VMD
+        For the safety, these pdb files must be generated by ptraj with "nowrap"
         NOTE: Please check coordinates of atoms from different pdb file format
         VMD format:
             CRYST1    0.000    0.000    0.000  90.00  90.00  90.00 P 1           1
@@ -311,31 +348,31 @@ class Molecule:
         lines = open(pdb,'r').readlines()
         if lines[0].startswith("CRYST1"):    #generated from vmd.
             try:
-                #there is no problem with coordinate (see Molecule.write2NewPdb())
+                #there is no problem with coordinate (see Molecule.write_to_new_PDB())
                 #skip header "CRYST1" in PDB file generated by vmd, remove "END" line
                 arrpdb = loadtxt(pdb,skiprows=1,comments="END",usecols=(6,7,8))
             except:                          #re-write pdb file
-                self.write2NewPdb(pdb)
+                self.write_to_new_PDB(pdb)
                 arrpdb = loadtxt(pdb+".mod",skiprows=1,comments="END",usecols=(6,7,8))
         elif lines[0].startswith("REMARK"):   #generated from ptraj
 #            print 'test'
             try:
-                #no problem with coordinate (see Molecule.write2NewPdb())
+                #no problem with coordinate (see Molecule.write_to_new_PDB())
                 #skip header "REMARK" in PDB file generated by ptraj, remove "END" line
                 arrpdb = loadtxt(pdb,skiprows=1,comments="END",usecols=(5,6,7))
 #                print arrpdb.__len__()
             except:                           #re-write pdb file
-                self.write2NewPdb(pdb)
+                self.write_to_new_PDB(pdb)
                 arrpdb = loadtxt(pdb+".mod",skiprows=1,comments="END",usecols=(5,6,7))
         else:
             #no header: generated by ambpdb and then removing header
             #pdb file generated by tleap have coordinates in colum 6,7,8 (index: 5,6,7)
             try:
-                #there is no problem with coordinate (see Molecule.write2NewPdb())
+                #there is no problem with coordinate (see Molecule.write_to_new_PDB())
                 #remove "END" line, do not skip first line. Make sure to remove TER
                 arrpdb = loadtxt(pdb,skiprows=0,comments="END",usecols=(5,6,7))
             except: #re-write pdb file
-                self.write2NewPdb(pdb)
+                self.write_to_new_PDB(pdb)
                 arrpdb = loadtxt(pdb+".mod",skiprows=0,comments="END",usecols=(5,6,7))
 
         for i,arrtmp in enumerate(arrpdb):
@@ -367,7 +404,17 @@ class Molecule:
                 if atom.atype == 'H': self.rborn[i] = ''
         pass
 
-    def getGBArray_3Pars(self, gbArray):
+    def update_residue_radii(self, resarr, atomarr, newradarr):
+        '''STATUS: NOT DONE YET
+        update VDW radii for a list of residues with atom masks'''
+        if len(atomarr) != len(newradarr):
+            print "number of new radii should be equal \
+                   to number of atoms needed to \
+                   be changed"
+        else:
+            pass
+
+    def get_GBarray_3Pars(self, gbArray):
         '''gbArray = [alpha, beta, gamma]
         '''
         alpha, beta, gamma = gbArray
@@ -378,7 +425,7 @@ class Molecule:
             gbvgamma.append(gamma)
         return gbvalpha,gbvbeta,gbvgamma
 
-    def getGBArray_HO(self,gbArray):
+    def get_GBArray_HO(self,gbArray):
         ''' gbArray = [gbalpha,gbbeta,gbgamma,
                         gbalphaH,gbbetaH,gbgammaH,
                         gbalphaO,gbbetaO,gbgammaO]
@@ -399,59 +446,7 @@ class Molecule:
                 gbvgamma.append(gbArray[2])
         return gbvalpha,gbvbeta,gbvgamma
 
-    def getGBArray_NC(self,gbArray):
-        ''' gbArray = [gbalpha,gbbeta,gbgamma,
-                        gbalphaN,gbbetaN,gbgammaN,
-                        gbalphaC,gbbetaC,gbgammaC]
-            N is amide nitrogen (backbone)
-            C is carboxyl carbon (backbone)
-        '''
-        gbvalpha,gbvbeta,gbvgamma = [],[],[]
-        for atom in self.atoms:
-            if atom.atype == 'N':
-                gbvalpha.append(gbArray[3])
-                gbvbeta.append(gbArray[4])
-                gbvgamma.append(gbArray[5])
-            elif atom.atype == 'C':
-                gbvalpha.append(gbArray[6])
-                gbvbeta.append(gbArray[7])
-                gbvgamma.append(gbArray[8])
-            else:
-                gbvalpha.append(gbArray[0])
-                gbvbeta.append(gbArray[1])
-                gbvgamma.append(gbArray[2])
-        return gbvalpha,gbvbeta,gbvgamma
-
-    def getGBArray_NC_4pars(self,gbArray):
-        '''getGBArray_NC_4pars: use 4 parameters
-        exp: tanh((gbalpha - gbbeta*psi + gbgamma*psi**2 + gblambda*psi**3)*psi)
-         gbArray = [gbalpha,gbbeta,gbgamma,gblambda
-                        gbalphaN,gbbetaN,gbgammaN,gblambdaN
-                        gbalphaC,gbbetaC,gbgammaC,gblambdaC]
-            N is amide nitrogen (backbone)
-            C is carboxyl carbon (backbone)
-        use:
-        '''
-        gbvalpha,gbvbeta,gbvgamma,gbvlambda = [],[],[],[]
-        for atom in self.atoms:
-            if atom.atype == 'N':
-                gbvalpha.append(gbArray[4])
-                gbvbeta.append(gbArray[5])
-                gbvgamma.append(gbArray[6])
-                gbvlambda.append(gbArray[7])
-            elif atom.atype == 'C':
-                gbvalpha.append(gbArray[8])
-                gbvbeta.append(gbArray[9])
-                gbvgamma.append(gbArray[10])
-                gbvlambda.append(gbArray[11])
-            else:
-                gbvalpha.append(gbArray[0])
-                gbvbeta.append(gbArray[1])
-                gbvgamma.append(gbArray[2])
-                gbvlambda.append(gbArray[3])
-        return gbvalpha,gbvbeta,gbvgamma,gbvlambda
-
-    def getGBArray_NCHO(self,gbArray):
+    def get_GBArray_NCHO(self,gbArray):
         ''' For BackBone atoms
             gbArray = [gbalpha,gbbeta,gbgamma,
                         gbalphaN,gbbetaN,gbgammaN,
@@ -598,7 +593,7 @@ class Molecule:
         return gbvalpha,gbvbeta,gbvgamma
 
     def get_offset(self,offset_pro,offset_P):
-        '''Add desctiption here
+        '''Add description here
         '''
         N = len(self.atoms)
         offset = zeros(N)
@@ -816,7 +811,7 @@ class Molecule:
         '''update perfect radii'''
         self.getEffRadFromReff(self.effRad_PB)
 
-    def getDeltaG(self):
+    def get_solv(self):
         ''' Calculate Total, Self, Cross Solvation Energy'''
         sumTot = 0
         sumSelf = 0
@@ -843,16 +838,15 @@ class Molecule:
         sumTot   =  sumCross + sumSelf
         return (sumTot, sumSelf, sumCross)
 
-    def getDeltaGFromFortran(self):
+    def get_solvFromFortran(self):
         '''using FORTRAN function'''
-        #return deltaG.deltag.dltg(self.xx,self.effRads,self.rborn,self.charges,self.ein,self.eout)
         return deltaG_testNozero.deltag.dltg(self.xx,self.effRads,self.rborn,self.charges,self.ein,self.eout)
 
-    def getDeltaGFromFortran_for_GivenEffRadSet(self,reff):
+    def get_solvFromFortran_for_GivenEffRadSet(self,reff):
         '''use this function for optimztion to save time'''
         return deltaG_testNozero.deltag.dltg(self.xx,reff,self.rborn,self.charges,self.ein,self.eout)
 
-    def getDeltaGFromFortranFull(self,igb,egbVersion):
+    def get_solvFromFortranFull(self,igb,egbVersion):
         """given igb and egbVersion, gb enery will be calculated"""
         if igb == 5:
             scalingDict = {'H':0.85, 'C':0.72, 'N':0.79, 'O':0.85, 'S':0.96}
@@ -863,21 +857,12 @@ class Molecule:
             gbArray = [1.09511284,1.90792938,2.50798245]
         gbalpha, gbbeta, gbgamma = gbArray
         egb = egbVersion.effrad.egb_calc_radii
-#        t0 = time()
         self.updateFs(scalingDict)
-#        t01 = time()
         reff = egb(igb,self.xx,self.fss,FSMAX,RGBMAX,self.rborn,offset,
                    gbalpha,gbbeta,gbgamma,gbneckscale)[0]
         return deltaG.deltag.dltg(self.xx,reff,self.rborn,self.charges,self.ein,self.eout)
-#        t1 = time()
-#        self.getEffRadFromReff(reff)
-#        print self.getDeltaGFromFortran()
-#        t2 = time()
-#        print self.getDeltaGFromFortran_for_GivenEffRadSet(reff)
-##        t3 = time()
-##        print  t01-t0,t2-t1,t3-t2
 
-    def getSelfEn_perfectR_PB(self,pbfile):
+    def get_selfEnergy_perfectR_from_PB(self,pbfile):
         '''get self energy term from PB calculation'''
         from numpy import loadtxt as lt
         import sys
@@ -888,11 +873,11 @@ class Molecule:
             sys.exit()
 
         temp = - 0.5 * (1/self.ein - 1/self.eout)
-        self.selfEnPB = selfPB  # which term is correct?
+        self.selfEPB = selfPB  # which term is correct?
 
         for i, ene in enumerate(selfPB):
             if ene == 0: selfPB[i] = 0.00000001 # avoid 0/0
-        self.effRad_PB = temp*pow(array(self.charges),2)/self.selfEnPB
+        self.effRad_PB = temp*pow(array(self.charges),2)/self.selfEPB
 
     def getSelfEne(self,igb,egbVersion):
         ''' get self energy array
@@ -933,14 +918,14 @@ class Molecule:
             selfEne.append(temp)
         return array(selfEne)
 
-    def _converString(self,errStr):
+    def _convert_string(self,errStr):
         ''' convert this -94.376-136.032 to -94.376  -136.032 '''
         import re
         #
         errStr = re.split("\d-",errStr)
         return errStr[0], "-"+errStr[-1]
 
-    def write2NewPdb(self,pdb):
+    def write_to_new_PDB(self,pdb):
         ''' When pdb file has this kind of error: -94.376-136.032
             --> you need to seperate them so that numpy.loadtxt could work properly
         '''
@@ -953,7 +938,7 @@ class Molecule:
         fh.close()
         open(pdb+".mod",'w').writelines(lines)
 
-    def getinfo(self):
+    def show_info(self):
         '''print my info
         AtomNum = total number of atom type
         '''
@@ -1047,7 +1032,7 @@ class Molecule:
     def showme(self):
         print "atom type:", self.typekeys
         for at in self.typekeys:
-            print self.getinfo()[at]
+            print self.show_info()[at]
         print "Residue label: ",self.reslb
         print "Residue pointer: ",self.respt
 
@@ -1148,6 +1133,18 @@ class Molecule:
             rnew = loadtxt(fname,usecols=(2,),skiprows=1)
             self.rborn = rnew
 
+    def which_residue(self,index):
+        '''return residue name with atom index 'index'
+        '''
+        res_num = len(self.reslb)
+        respt = self.respt
+        for i in range(res_num):
+            if i <= res_num - 2:
+                if index in range(respt[i],respt[i+1]):
+                    return self.reslb[i]
+                    break
+            else:
+                return self.reslb[-1]
 #Functions
 def create_GB_vector(atypes,gbArray):
     '''For all atom
