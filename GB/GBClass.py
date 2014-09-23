@@ -1,5 +1,6 @@
 import sys
 import re
+import numpy as np
 from GB_functions import *
 
 FSMAX  = 5.0
@@ -28,6 +29,7 @@ class Atom:
         self.rs = rs
         self.offset = offset
         self.atype = atype
+        self.xyz = [] #array of x y z coordinates
 
     def set_coord(self,x,y,z):
         self.x = x
@@ -56,6 +58,16 @@ class Atom:
         print 'type: ', (self.atype),' r= ',self.r,' ro= ',self.ro,' sf= ',self.sf, ' rs= ', self.rs, \
                             'coor = (',self.x, self.y, self.z,')',' R= ', self.R
 
+class Residue:
+
+    def __init__(self):
+        pass
+    def name(self):
+        """return residue name"""
+        pass
+    def get_connect_residues(self):
+        pass
+
 class Molecule:
 
     def __init__(self,ein=1.0,eout=78.5,offset=0.09,crd='',top='',pdb='',molType=''):
@@ -73,8 +85,12 @@ class Molecule:
        '''
 
         #initialize data
+        self.topdir = ''
         self.atoms = []
         self.xx = []
+        self.X = [] #narray of X-coord for all atoms
+        self.Y = [] #narray of Y-coord for all atoms
+        self.Z = [] #narray of Z-coord for all atoms
         self.fss = []
         self.rborn = []
         self.Rborns = []
@@ -292,9 +308,21 @@ class Molecule:
             index = index + 2
         fh.close() # close crd file
         # while using module from FORTRAN, I could not use numpy to pass these array to function? why?
-        self.xx = xx # coordinate file: the same with the amber file. Should I use numpy.array or just use normal array?
+        # coordinate file: the same with the amber file.
+        # Should I use numpy.array or just use normal array?
+        self.xx = xx
 
-    def get_distance(self,atom1,atom2):
+        #add to self.X, self.Y and self.Z array too
+        _xx = np.array(self.xx)
+        self.X = _xx[0::3]
+        self.Y = _xx[1::3]
+        self.Z = _xx[2::3]
+
+        #assign coord vector for atoms
+        for i in range(self.natoms):
+            self.atoms[i].xyz = np.array([self.X[i], self.Y[i], self.Z[i]])
+
+    def dist(self,atom1,atom2):
         """get distance from atom 1 and atom 2
         atoms are instance of Atom class
         """
@@ -379,6 +407,10 @@ class Molecule:
             atomi = self.atoms[i]
             atomi.x,atomi.y,atomi.z = arrtmp
         self.xx = [coord for coord in ravel(arrpdb)]
+
+    def get_residue_list(self,resname):
+        """return a list of residue instances with 'resname'"""
+        pass
 
     def updateFs(self,scalingDict,offset=0.09):
         '''when using GBNeck, you have to change default scaling parameter set
