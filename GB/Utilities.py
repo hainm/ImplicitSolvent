@@ -1,11 +1,10 @@
-from GB.GBClass import *
+from GBClass import *
 #STATUS: not validated yet
 #numpy was imported from GB_functions.py
 
 class Utilities:
-    def __init__(mol):
-        pass
-    def convertmb2tomb3(self,topold,topnew):
+
+    def convertmb2tomb3(topold,topnew):
         """Convert topology file from mbondi2 to mbondi3 radii set
         """
 
@@ -46,7 +45,7 @@ class Utilities:
         fh.writelines(lines)
         fh.close()
 
-    def calc_histogram(self,bins=100,lowerb=0,upperb=20,data=''):
+    def calc_histogram(bins=100,lowerb=0,upperb=20,data=''):
         """histogram of data
         Why do I need this?
         """
@@ -54,5 +53,3 @@ class Utilities:
         mean = hist
         bedge = bedge[:-1]
         return bedge, mean
-
-
