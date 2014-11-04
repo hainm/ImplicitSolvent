@@ -1,5 +1,5 @@
 from GBClass import *
-#STATUS: not validated yet
+#to be added more stuff
 #numpy was imported from GB_functions.py
 
 class Utilities:
