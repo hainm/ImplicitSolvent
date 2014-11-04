@@ -1,3 +1,5 @@
+`Beerware License`
+
 Solvation Energy calculation with different Generalized Born solvent models
 --------------------------------------------------------------------------
 
