@@ -1,6 +1,6 @@
 '''Hai Nguyen
 I made this work for my GB project. You're free to use for whatever purpose.
-It would be great if you can give me credit for my work.
+Paper:
     1. Protein
     Nguyen, H.; Roe, D. R.; Simmerling, C., Improved Generalized Born Solvent Model Parameters for Protein Simulations. J. Chem. Theory Comput. 2013, 9 (4), 2020-2034.
 

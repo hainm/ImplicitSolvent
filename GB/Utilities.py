@@ -1,7 +1,12 @@
 from GBClass import *
+<<<<<<< HEAD
 # STATUS: not validated yet
 # numpy was imported from GB_functions.py
 
+=======
+#to be added more stuff
+#numpy was imported from GB_functions.py
+>>>>>>> 6bba1c6e24d4c049893baf2a0938e800b9fcf73c
 
 class Utilities:
 
